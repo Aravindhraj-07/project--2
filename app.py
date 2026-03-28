@@ -21,7 +21,7 @@ def home():
             else:
                 prediction = "Real News ✅"
 
-    return render_template("index.html", prediction=prediction)
+    return render_template("templates.html", prediction=prediction)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
