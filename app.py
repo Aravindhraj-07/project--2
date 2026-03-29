@@ -1,44 +1,94 @@
-import re
-
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify, flash, redirect, url_for
 import joblib
 
 app = Flask(__name__)
-import re
-def clean_text(text):
-    text = str(text).lower()
-    text = re.sub(r"http\S+", "", text)
-    text = re.sub(r"[^a-zA-Z]", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+app.secret_key = 'your-secret-key-here'
 
-# Load model
-pipeline = joblib.load("fake_news_detector.pkl")
-
-@app.route("/", methods=["GET", "POST"])
-def home():
-    prediction = None
+# -------------------------------
+# Load Pipeline Model (Vectorizer + Logistic)
+# -------------------------------
+try:
+    model = joblib.load('fake_news_detector.pkl')
+except Exception as e:
+    print("Error loading model:", e)
+    model = None
 
 
-    if request.method == "POST":
-        news = request.form["news"]
-        
+# -------------------------------
+# Routes
+# -------------------------------
+@app.route('/')
+def index():
+    return render_template('index.html')
 
- 
 
-    if request.method == "POST":
-        news = request.form["news"]
+@app.route('/detect', methods=['POST'])
+def detect_news():
+    try:
+        news_text = request.form['news_text']
 
-        if news.strip() != "":
-            cleaned = clean_text(news)
-            result = pipeline.predict([cleaned])[0]
+        if not news_text.strip():
+            flash('Please enter some news text!', 'error')
+            return redirect(url_for('index'))
 
-            if result == 0:
-                prediction = "Fake News ❌"
-            else:
-                prediction = "Real News ✅"
+        if model is None:
+            flash('Model not loaded properly!', 'error')
+            return redirect(url_for('index'))
 
-    return render_template("index.html", prediction=prediction)
+        prediction = predict_news(news_text)
+        confidence = get_confidence(news_text)
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000, debug=False)
+        return render_template('result.html',
+                               prediction=prediction,
+                               confidence=confidence,
+                               news_text=news_text)
+
+    except Exception as e:
+        flash(f'Error: {str(e)}', 'error')
+        return redirect(url_for('index'))
+
+
+# -------------------------------
+# Prediction Function
+# -------------------------------
+def predict_news(text):
+    pred = model.predict([text])[0]
+    return 'REAL' if pred == 1 else 'FAKE'
+
+
+# -------------------------------
+# Confidence Function
+# -------------------------------
+def get_confidence(text):
+    if hasattr(model, "predict_proba"):
+        prob = model.predict_proba([text])[0]
+        return max(prob)
+    return 0.0
+
+
+# -------------------------------
+# API Route
+# -------------------------------
+@app.route('/api/detect', methods=['POST'])
+def api_detect():
+    data = request.json
+    text = data.get('text', '')
+
+    if not text.strip():
+        return jsonify({'error': 'No text provided'}), 400
+
+    prediction = predict_news(text)
+    confidence = get_confidence(text)
+
+    return jsonify({
+        'prediction': prediction,
+        'confidence': confidence,
+        'message': f'This news is {prediction.lower()} with {confidence*100:.1f}% confidence'
+    })
+
+
+# -------------------------------
+# Run App
+# -------------------------------
+if __name__ == '__main__':
+    app.run(debug=True)
